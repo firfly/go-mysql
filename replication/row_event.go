@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/shopspring/decimal"
 	"github.com/siddontang/go-log/log"
 	. "github.com/siddontang/go-mysql/mysql"
@@ -71,7 +71,7 @@ func (e *TableMapEvent) Decode(data []byte) error {
 
 	var err error
 	var metaData []byte
-	if metaData, _, n, err = LengthEnodedString(data[pos:]); err != nil {
+	if metaData, _, n, err = LengthEncodedString(data[pos:]); err != nil {
 		return errors.Trace(err)
 	}
 
@@ -81,11 +81,14 @@ func (e *TableMapEvent) Decode(data []byte) error {
 
 	pos += n
 
-	if len(data[pos:]) != bitmapByteSize(int(e.ColumnCount)) {
+	nullBitmapSize := bitmapByteSize(int(e.ColumnCount))
+	if len(data[pos:]) < nullBitmapSize {
 		return io.EOF
 	}
 
-	e.NullBitmap = data[pos:]
+	e.NullBitmap = data[pos : pos+nullBitmapSize]
+
+	// TODO: handle optional field meta
 
 	return nil
 }
@@ -230,6 +233,7 @@ type RowsEvent struct {
 	parseTime               bool
 	timestampStringLocation *time.Location
 	useDecimal              bool
+	ignoreJSONDecodeErr     bool
 }
 
 func (e *RowsEvent) Decode(data []byte) error {
